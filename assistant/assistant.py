@@ -38,7 +38,7 @@ logging.getLogger("realtime_ai").setLevel(logging.ERROR)
 logger = logging.getLogger()
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-RESOURCES_DIR = SCRIPT_DIR / "../resources"
+RESOURCES_DIR = SCRIPT_DIR / "resources"
 
 
 class ConversationState(Enum):
@@ -376,6 +376,10 @@ async def main():
         if not api_key:
             return
 
+        assistant_instructions = os.environ.get("ASSISTANT_INSTRUCTIONS")
+        if not assistant_instructions:
+            return
+        
         functions = FunctionTool(functions=user_functions)
 
         # Define RealtimeOptions
@@ -383,7 +387,7 @@ async def main():
             api_key=api_key,
             model="gpt-4o-realtime-preview",
             modalities=["audio", "text"],
-            instructions="You are a helpful assistant. Respond concisely and at most one sentence. You have access to a variety of tools to analyze, translate and review text and code.",
+            instructions=assistant_instructions,
             turn_detection=get_vad_configuration(use_server_vad=False),
             tools=functions.definitions,
             tool_choice="auto",
