@@ -7,3 +7,6 @@ azure-cognitiveservices-speech
 scipy
 onnxruntime
 resampy
+openai
+requests
+O365

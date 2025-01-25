@@ -21,6 +21,8 @@ from realtime_ai.aio.realtime_ai_event_handler import RealtimeAIEventHandler
 from realtime_ai.models.realtime_ai_events import *
 from user_functions import user_functions
 
+from O365 import Account
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -380,6 +382,19 @@ async def main():
         if not assistant_instructions:
             return
         
+        MS365_CLIENT_ID = os.environ.get("MS365_CLIENT_ID")
+        MS365_SECRET = os.environ.get("MS365_SECRET")
+        MS365_TENANT_ID = os.environ.get("MS365_TENANT_ID")
+
+        credentials = (MS365_CLIENT_ID, MS365_SECRET)
+        scopes = ['Calendars.ReadWrite']
+        account = Account(credentials, tenant_id=MS365_TENANT_ID)
+
+        if not account.is_authenticated:
+            account.authenticate(scopes=scopes)
+        if account.is_authenticated:
+            logger.info("Authenticated with O365")
+
         functions = FunctionTool(functions=user_functions)
 
         # Define RealtimeOptions
@@ -445,7 +460,7 @@ async def main():
             cross_fade_duration_ms=20,
             vad_parameters=vad_parameters,
             enable_wave_capture=False,
-            keyword_model_file=str(RESOURCES_DIR / "kws.table"),
+            keyword_model_file=str(RESOURCES_DIR / "alfred.table"),
         )
 
         logger.info("Recording... Press Ctrl+C to stop.")
