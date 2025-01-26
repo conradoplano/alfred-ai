@@ -125,12 +125,14 @@ def retrieve_person_info(person: str) -> str:
     return json.dumps(result, indent=4)
 
 
-def retrieve_person_events(person: str, startdate: str, enddate: str) -> str:
+def retrieve_person_events(startdate: str, enddate: str, person: str = None) -> str:
     """
-    Retrieves all events of a person between the start date and end date.
-    :param person (str): The name of the person.
+    Retrieves events occuring between the start date and end date. 
+    If no person is specified, all events of all persons are returned. 
+    If a person is specified, only events categorized under that person's name are returned. 
     :param startdate (str): The earliest date to retrieve events, in YYYY-MM-DD format.
     :param enddate (str): The latest date to retrieve events, in YYYY-MM-DD format.
+    :param person (str, optional): The firstname of the person having the event.
     :return: A JSON object containing information of the events.
     """
 
@@ -154,18 +156,21 @@ def retrieve_person_events(person: str, startdate: str, enddate: str) -> str:
 
     q = calendar.new_query('start').greater_equal(start_date)
     q.chain('and').on_attribute('end').less_equal(end_date)
+    # q.chain('and').any(collection='categories', operation='eq', word='Private')
 
     events = calendar.get_events(query=q, include_recurring=True)
 
     event_list = []
 
     for event in events:
-        event_list.append({
-            'subject': event.subject,
-            'start': event.start.strftime("%Y-%m-%d %H:%M:%S"),
-            'end': event.end.strftime("%Y-%m-%d %H:%M:%S"),
-            'location': event.location.displayName if event.location.displayName else "No location",
-        })
+        if "Private" in event.categories:
+            if person is None or person in event.categories or person.lower() in event.subject.lower():
+                event_list.append({
+                    'subject': event.subject,
+                    'start': event.start.strftime("%Y-%m-%d %H:%M:%S"),
+                    'end': event.end.strftime("%Y-%m-%d %H:%M:%S"),
+                    'location': event.location["displayName"] if event.location["displayName"] else "No location",
+                })
 
     return json.dumps(event_list, indent=4)
 
