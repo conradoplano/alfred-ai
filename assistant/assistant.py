@@ -61,7 +61,7 @@ class MyAudioCaptureEventHandler(AudioCaptureEventHandler):
         self._client = client
         self._event_handler = event_handler
         self._state = ConversationState.IDLE
-        self._silence_timeout = 10  # Silence timeout in seconds for rearming keyword detection
+        self._silence_timeout = 60  # Silence timeout in seconds for rearming keyword detection
         self._silence_timer_task = None
         self._event_loop = event_loop
 
@@ -215,7 +215,8 @@ class MyRealtimeEventHandler(RealtimeAIEventHandler):
         self.handle_audio_delta(event)
 
     async def on_response_audio_transcript_delta(self, event: ResponseAudioTranscriptDelta) -> None:
-        logger.info(f"Assistant transcription delta: {event.delta}")
+        # logger.info(f"Assistant transcription delta: {event.delta}")
+        None
 
     async def on_rate_limits_updated(self, event: RateLimitsUpdated) -> None:
         for rate in event.rate_limits:
@@ -406,7 +407,7 @@ async def main():
             turn_detection=get_vad_configuration(use_server_vad=False),
             tools=functions.definitions,
             tool_choice="auto",
-            temperature=0.8,
+            temperature=0.6,
             voice="ballad",
             enable_auto_reconnect=True,
             azure_openai_endpoint=azure_openai_endpoint,
