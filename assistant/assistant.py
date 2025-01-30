@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import logging
 import base64
 import os, sys, json
@@ -19,9 +20,12 @@ from realtime_ai.models.realtime_ai_options import RealtimeAIOptions
 from realtime_ai.models.audio_stream_options import AudioStreamOptions
 from realtime_ai.aio.realtime_ai_event_handler import RealtimeAIEventHandler
 from realtime_ai.models.realtime_ai_events import *
-from user_functions import user_functions
+from user_functions import user_functions_set
+import user_functions
 
 from O365 import Account
+
+from music_assistant_client.client import MusicAssistantClient
 
 # Configure logging
 logging.basicConfig(
@@ -388,7 +392,7 @@ async def main():
         MS365_TENANT_ID = os.environ.get("MS365_TENANT_ID")
 
         credentials = (MS365_CLIENT_ID, MS365_SECRET)
-        scopes = ['Calendars.ReadWrite']
+        scopes = ['offline_access','Calendars.ReadWrite']
         account = Account(credentials, tenant_id=MS365_TENANT_ID)
 
         if not account.is_authenticated:
@@ -396,7 +400,23 @@ async def main():
         if account.is_authenticated:
             logger.info("Authenticated with O365")
 
-        functions = FunctionTool(functions=user_functions)
+        user_functions.set_o365_account(account)
+
+        MUSIC_ASSISTANT_SERVER = os.environ.get("MUSIC_ASSISTANT_SERVER")
+    
+        # Create an aiohttp session
+        async with aiohttp.ClientSession() as session:
+            # Initialize the MusicAssistantClient with the session
+            music_assistant_client = MusicAssistantClient(MUSIC_ASSISTANT_SERVER, aiohttp_session=session)
+
+            # Connect to the Music Assistant server
+            client_ready = asyncio.Event()
+            asyncio.create_task(music_assistant_client.start_listening(client_ready))
+            await client_ready.wait()
+        
+        user_functions.set_music_client(music_assistant_client)
+
+        functions = FunctionTool(functions=user_functions_set)
 
         # Define RealtimeOptions
         options = RealtimeAIOptions(
