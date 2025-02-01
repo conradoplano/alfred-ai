@@ -7,6 +7,7 @@ from typing import Callable, Any, Set
 import os
 import sqlite3
 from typing import Any, List
+import datetime
 
 from O365 import Account
 from music_assistant_client.client import MusicAssistantClient
@@ -199,10 +200,83 @@ def retrieve_person_events(startdate: str, enddate: str, persons: List[str]) -> 
     
     return json.dumps(categorized_events, indent=4)
 
-def get_music_player_queues() -> str:
+
+def search_events(search_string: str, startdate: str = None, enddate: str = None) -> str:
+    """
+    Retrieves events occuring between the start date and end date for the persons specified. 
+    :param persons (str): String to search in event name.
+    :param startdate (str): The earliest date to retrieve events, in YYYY-MM-DD format (Optional).
+    :param enddate (str): The latest date to retrieve events, in YYYY-MM-DD format (Optional).
+    :return: A JSON object containing a dictionary of events and information of the events, maximum 5 events.
+    """
+
+    global global_o365_account  # Ensure we reference the global variable
+    if global_o365_account is None:
+        return json.dumps({"error": "o365 account not set"})
+    
+    schedule = global_o365_account.schedule()
+    calendar = schedule.get_default_calendar()
+
+    # Convert input date strings to datetime objects
+    start_date = datetime.strptime(startdate, "%Y-%m-%d")
+    end_date = datetime.strptime(enddate, "%Y-%m-%d")
+
+    q = calendar.new_query().on_attribute('subject').contains('george best')
+    if startdate is not None and enddate is not None:
+        q.chain('and').on_attribute('start').less_equal(start_date)
+        q.chain('and').on_attribute('end').less_equal(end_date)
+
+    events = calendar.get_events(query=q, include_recurring=True)
+    
+    events_list : []
+    for event in events:
+        if "Private" in event.categories:
+            events_list.append({
+                'subject': event.subject,
+                'start': event.start.strftime("%Y-%m-%d %I:%M:%S %p"),
+                'end': event.end.strftime("%Y-%m-%d %I:%M:%S %p"),
+                'location': event.location["displayName"] if event.location and event.location.get("displayName") else "No location",
+            })
+    
+    return json.dumps({"events" : events_list}, indent=4)
+
+def create_event(subject: str, start_datetime: str, end_datetime: str, location: str = None):
+    """
+    Creates an event in the default calendar.
+    :param subject: The subject of the event.
+    :param start_datetime: The start datetime of the event in YYYY-MM-DD HH:MM:SS format.
+    :param end_datetime: The end datetime of the event in YYYY-MM-DD HH:MM:SS format.
+    :return: A confirmation message or an error message.
+    """
+    global global_o365_account
+    
+    if global_o365_account is None:
+        return json.dumps({"error": "o365 account not set"})
+    
+    schedule = global_o365_account.schedule()
+    calendar = schedule.get_default_calendar()
+    
+    try:
+        # Convert string datetime to timezone-aware datetime
+        start = datetime.datetime.strptime(start_datetime, "%Y-%m-%d %H:%M:%S")
+        end = datetime.datetime.strptime(end_datetime, "%Y-%m-%d %H:%M:%S")
+        
+        event = calendar.new_event()
+        event.subject = subject
+        event.start = start
+        event.end = end
+        event.location = "" if location is None else location  # Optional
+        event.is_all_day = False if start.date() == end.date() else True
+        event.save()
+        
+        return json.dumps({"success": "Event created successfully"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+def get_music_players() -> str:
     """
     Retrieves all music player in the house.
-    :return: An array containing all player queues and their details, including id and status.
+    :return: A dictionary containing all player queues and players, with details including id and status.
     :rtype: str
     """
 
@@ -216,14 +290,29 @@ def get_music_player_queues() -> str:
     # Convert results to a list of dictionaries
     player_queues_list = [
         {
-            "id": player_queue.queue_id,  # Assuming radio object has an item_id attribute
+            "id": player_queue.queue_id,  
             "name": player_queue.display_name,
-            "state": player_queue.state,  # Assuming radio object has a provider attribute
+            "state": player_queue.state,
         }
         for player_queue in player_queues
     ]
+
+    # Get the players
+    players = global_music_client.players
+
+    # Convert results to a list of dictionaries
+    players_list = [
+        {
+            "id": player.player_id,  # Assuming radio object has an item_id attribute
+            "name": player.name,
+            "volume" : player.volume_level,
+            "powered": player.powered,
+            "media": player.current_media,  # Assuming radio object has a provider attribute
+        }
+        for player in players
+    ]
     
-    return json.dumps({"player_queues": player_queues_list})
+    return json.dumps({"player_queues": player_queues_list, "players": players_list})
 
 
 async def search_radios(radio_name: str) -> str:
@@ -371,11 +460,12 @@ async def search_song(song_name: str, artist_name: str = None) -> str:
     return json.dumps({"song": song.name, "uri" : song.uri, "artist": song.artists[0].name if song.artists else "Unknown"})
 
 
-async def play_media(uri: str, player_queue_id: str):
+async def play_media(uri: str, player_queue_id: str, player_id: id):
     """
     Plays a media from a URI in a music player in the house.
     :param uri (str): The URI of the media to play.
     :param player_queue_id (str): The ID of the player queue of the player where to play the media.
+    :param player__id (str): The ID of the player where to play the media.
     :return: Confirmation message.
     :rtype: str
     """
@@ -384,11 +474,15 @@ async def play_media(uri: str, player_queue_id: str):
     if global_music_client is None:
         return json.dumps({"error": "Music client not set"})
 
+    players = global_music_client.players
+    player_on_task = asyncio.create_task(players.player_command_power(player_id=player_id,powered=True))
+    await player_on_task
+
     player_queues = global_music_client.player_queues
     play_music_task = asyncio.create_task(player_queues.play_media(queue_id=player_queue_id, media=uri))
     await play_music_task
-
-    return "Media playing"
+    
+    return "Media playing started"
 
 # Statically defined user functions for fast reference
 user_functions_set: Set[Callable[..., Any]] = {
@@ -397,7 +491,9 @@ user_functions_set: Set[Callable[..., Any]] = {
     store_person_info,
     retrieve_person_info,
     retrieve_person_events,
-    get_music_player_queues,
+    search_events,
+    create_event,
+    get_music_players,
     search_radios,
     search_albums,
     search_artist,
